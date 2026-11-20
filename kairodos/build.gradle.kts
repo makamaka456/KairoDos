@@ -13,7 +13,9 @@ apply(from = rootProject.file("shared/gradle/kairo-app.gradle"))
 
 // 개조(PM2): 원래 KairoDos 옆에 따로 설치되는 앱 ID. 에뮬레이터 엔진은 디버그 빌드에서도 -O2로
 // 지어진다(backend-dos/CMakeLists.txt:47-48). 앱 코드가 느려지지 않게 디버깅만 끈다(kairo-uitest.gradle 참고).
-android.defaultConfig.applicationId = "com.pm2mod.kairodos"
+// 처음 설치한 com.pm2mod.kairodos 는 빌드마다 바뀌는 임시 키로 서명되어 덮어 설치가 안 된다.
+// 그래서 이 ID부터는 Actions가 만든 APK를 사용자 PC의 고정 키로 다시 서명해 설치한다(키는 저장소 밖).
+android.defaultConfig.applicationId = "com.pm2mod.pm2"
 android.buildTypes.getByName("debug").isDebuggable = false
 
 // DOSBox Staging's runtime resources, beside the shared catalog assets.
