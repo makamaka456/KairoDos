@@ -188,6 +188,26 @@ int keyboard_waiting = 0;
 int mouse_absolute = -1;
 float cursor_x = 400.0f, cursor_y = 300.0f;
 
+// PM2 mod: direct touch for a guest that keeps its own pointer from the mouse's motion counters
+// (INT 33h 0Bh) and clamps it at the picture's edges, as Princess Maker 2 does. Its pointer moves one
+// picture pixel per count, so the point is sent as motion in picture pixels, not viewport pixels.
+// A new touch first drives the pointer into the top left corner (the guest clamps it to 0, 0) and,
+// once the guest has read that, moves it the exact distance to the point: whatever the guest clamped
+// before cannot leave the pointer off. Moves within one touch (a drag) go straight from the last point.
+enum class Warp { Idle, Homing, Moving };
+Warp warp = Warp::Idle;
+uint64_t warp_reads = 0;         // mouse_reads when the current step was sent
+uint64_t warp_frame = 0;         // guest_frames at the last point
+bool warp_known = false;         // whether the guest's pointer is at (warp_x, warp_y)
+int warp_x = 0, warp_y = 0;      // where the guest's pointer is (warp_known), in picture pixels
+int target_x = 0, target_y = 0;  // where it should go, in picture pixels
+int video_width = 0, video_height = 0;
+// Reads the guest makes after a step before the next: the first may come before the step's motion
+// reaches the driver's counters.
+constexpr uint64_t WarpReads = 2;
+// Frames without a point that make the next point a new touch.
+constexpr uint64_t WarpTouchGapFrames = 6;
+
 void set_mouse_absolute(bool absolute) {
     if (int(absolute) == mouse_absolute) return;
     set_section_property_value("mouse", "mouse_capture", absolute ? "seamless" : "onstart");
@@ -254,6 +274,9 @@ extern "C" int kairo_staging_run(const char* config, const char* config_dir,
     keyboard_waits = keyboard_polls = mouse_reads = 0;
     keyboard_waiting = 0;
     mouse_absolute = -1;
+    warp = Warp::Idle;
+    warp_known = false;
+    video_width = video_height = 0;
     std::filesystem::create_directories(config_dir);
     SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
@@ -307,8 +330,11 @@ bool KairoStagingPoll() {
     DOSBOX_RequestShutdown();
     return false;
 }
+static void warp_step();
+
 void KairoStagingFrameEnd() {
     guest_frames.fetch_add(1, std::memory_order_relaxed);
+    warp_step();
     // The frame's sound is ready before the host takes its turn.
     KairoMixerFrameEnd();
     const auto held = GetTicksUs();
@@ -351,6 +377,8 @@ extern "C" void kairo_staging_cpu(KairoStagingCpu* cpu) {
 }
 extern "C" int kairo_staging_lock_flags() { return mem_readb(0x417); }
 void KairoStagingVideo(const uint32_t* pixels, int w, int h, int pitch, double aspect) {
+    video_width = w;
+    video_height = h;
     callbacks.video(pixels, w, h, pitch, aspect);
 }
 void KairoStagingKeyboardWait(bool waiting) {
@@ -402,6 +430,8 @@ extern "C" void kairo_staging_joypad(const uint8_t* buttons, size_t count) {
 
 extern "C" void kairo_staging_mouse_move(int dx, int dy) {
     set_mouse_absolute(false);
+    warp = Warp::Idle;
+    warp_known = false;
     const auto viewport = GFX_GetViewportSizeInPixels();
     const auto width = viewport.w - 1;
     const auto height = viewport.h - 1;
@@ -411,17 +441,56 @@ extern "C" void kairo_staging_mouse_move(int dx, int dy) {
     MOUSE_EventMoved(float(dx), float(dy), viewport.x + cursor_x, viewport.y + cursor_y);
 }
 
-extern "C" void kairo_staging_mouse_point(int x, int y) {
-    set_mouse_absolute(true);
+// Sends motion (dx, dy) in picture pixels, with the host pointer at the viewport's point for picture
+// pixel (px, py): in seamless mode the driver reports motion only when that point changes.
+static void warp_motion(float dx, float dy, int px, int py) {
     const auto viewport = GFX_GetViewportSizeInPixels();
     const auto width = viewport.w - 1;
     const auto height = viewport.h - 1;
-    if (width <= 0 || height <= 0) return;
-    const auto next_x = std::clamp(float(x) * width / 65536.0f, 0.0f, float(width));
-    const auto next_y = std::clamp(float(y) * height / 65536.0f, 0.0f, float(height));
-    MOUSE_EventMoved(next_x - cursor_x, next_y - cursor_y, viewport.x + next_x, viewport.y + next_y);
-    cursor_x = next_x; cursor_y = next_y;
+    if (width <= 0 || height <= 0 || video_width <= 1 || video_height <= 1) return;
+    cursor_x = float(px) * width / float(video_width - 1);
+    cursor_y = float(py) * height / float(video_height - 1);
+    MOUSE_EventMoved(dx, dy, viewport.x + cursor_x, viewport.y + cursor_y);
 }
+
+static void warp_move() {
+    warp_motion(float(target_x - warp_x), float(target_y - warp_y), target_x, target_y);
+    warp_x = target_x; warp_y = target_y;
+    warp_known = true;
+    warp = Warp::Moving;
+    warp_reads = mouse_reads;
+}
+
+static void warp_step() {
+    if (warp == Warp::Idle || mouse_reads - warp_reads < WarpReads) return;
+    if (warp == Warp::Homing) {
+        warp_x = warp_y = 0;
+        warp_move();
+    } else {
+        warp = Warp::Idle;
+    }
+}
+
+extern "C" void kairo_staging_mouse_point(int x, int y) {
+    set_mouse_absolute(true);
+    if (video_width <= 1 || video_height <= 1) return;
+    target_x = std::clamp(int(int64_t(x) * video_width >> 16), 0, video_width - 1);
+    target_y = std::clamp(int(int64_t(y) * video_height >> 16), 0, video_height - 1);
+    const uint64_t frame = guest_frames.load(std::memory_order_relaxed);
+    const bool new_touch = !warp_known || frame - warp_frame > WarpTouchGapFrames;
+    warp_frame = frame;
+    if (new_touch) {
+        // Beyond any picture, within the driver's limit on one move (MOUSE_ClampRelativeMovement).
+        warp_motion(-2048.0f, -2048.0f, 0, 0);
+        warp_known = false;
+        warp = Warp::Homing;
+        warp_reads = mouse_reads;
+    } else if (warp != Warp::Homing) {
+        warp_move();
+    }
+}
+
+extern "C" bool kairo_staging_mouse_point_done() { return warp == Warp::Idle; }
 
 extern "C" void kairo_staging_mouse_button(int button, bool down) {
     if (button == 1) MOUSE_EventButton(MouseButtonId::Left, down);

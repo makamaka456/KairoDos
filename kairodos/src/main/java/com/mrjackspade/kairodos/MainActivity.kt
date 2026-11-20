@@ -1,7 +1,9 @@
 package com.mrjackspade.kairodos
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import com.mrjackspade.kairo.frontend.BlankDisk
@@ -75,7 +77,9 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
         private const val CUSTOM_VERSION = "custom"
         /** 개조(PM2): 앱을 열면 시작할 게임의 키(GameKey.path)와 직접 터치 시간. */
         private const val AUTO_START_KEY = "pm2_auto_start_game"
-        private const val DIRECT_SETTLE_MS = 100L
+        private const val DIRECT_SETTLE_MS = 30L
+        private const val DIRECT_POLL_MS = 16L
+        private const val DIRECT_WARP_WAIT_MS = 600L
         private const val DIRECT_PRESS_MS = 120L
         private const val DIRECT_LONG_PRESS_MS = 500L
         private const val SOUND_FONT_IMPORT_REQUEST = FIRST_PRODUCT_REQUEST
@@ -1127,9 +1131,10 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
     }
 
     // 개조(PM2): 직접 터치 ----------------------------------------------------------------------
-    // 손가락이 닿은 곳으로 커서를 옮기고, 게임이 마우스를 읽을 시간(DIRECT_SETTLE_MS)을 준 뒤 누른다.
+    // 손가락이 닿은 곳으로 커서를 옮기고, 커서가 게임에 도착하면 누른다.
     // 탭 = 왼쪽 클릭, 0.5초 꾹 누르기 = 오른쪽 클릭. 손가락을 끌면 커서만 따라온다(클릭 없음).
-    // 게임 쪽은 PM2.EXE 패치 002(마우스 절대 위치)와 함께 써야 손가락 위치와 커서가 정확히 맞는다.
+    // 커서를 정확히 옮기는 일은 staging_bridge.cpp(kairo_staging_mouse_point)가 한다: 프린세스메이커2는
+    // 마우스 이동량만 읽어 커서를 스스로 계산하므로, 새 터치마다 왼쪽 위 끝으로 보낸 뒤 게임 픽셀 단위로 옮긴다.
 
     private var directStartX = 0f
     private var directStartY = 0f
@@ -1145,11 +1150,23 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
             (event.y * frameHeight / height).toInt().coerceIn(0, frameHeight - 1))
     }
 
+    // 커서가 게임에 도착(mouseWarpDone: 게임이 마지막 이동을 읽음)할 때까지 기다렸다가 누른다.
+    // 게임이 마우스를 안 읽는 동안에는 DIRECT_WARP_WAIT_MS 뒤에 그냥 누른다.
     private fun directClick(button: String) {
-        handler.postDelayed({
-            mouseRouter.hold("touch-direct", button)
-            handler.postDelayed({ mouseRouter.release("touch-direct") }, DIRECT_PRESS_MS)
-        }, DIRECT_SETTLE_MS)
+        val started = SystemClock.uptimeMillis()
+        val press = object : Runnable {
+            override fun run() {
+                if (!mouseWarpDone() && SystemClock.uptimeMillis() - started < DIRECT_WARP_WAIT_MS) {
+                    handler.postDelayed(this, DIRECT_POLL_MS)
+                    return
+                }
+                handler.postDelayed({
+                    mouseRouter.hold("touch-direct", button)
+                    handler.postDelayed({ mouseRouter.release("touch-direct") }, DIRECT_PRESS_MS)
+                }, DIRECT_SETTLE_MS)
+            }
+        }
+        handler.postDelayed(press, DIRECT_POLL_MS)
     }
 
     private fun cancelDirectLongPress() {
@@ -1191,6 +1208,19 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
                 mouseRouter.releasePrefix("touch-")
             }
         }
+    }
+
+    // 개조(PM2): 휴대폰의 세로 고정과 상관없이 앱은 늘 가로 화면 ---------------------------------------
+    // 원래 앱의 "게임 화면 방향"(GameOrientation)이 무엇을 요청하든 가로로 바꾼다. 뒤집힌 가로는 센서를 따른다.
+    // MainActivity는 화면 회전을 스스로 처리하므로(configChanges) 돌아가도 게임이 다시 시작되지 않는다.
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    override fun setRequestedOrientation(requestedOrientation: Int) {
+        super.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
     }
 
     // 개조(PM2): 앱을 열면 정해 둔 게임을 바로 시작 -------------------------------------------------
