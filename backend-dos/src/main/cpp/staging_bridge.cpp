@@ -481,6 +481,10 @@ extern "C" void kairo_staging_mouse_point(int x, int y) {
     warp_frame = frame;
     if (new_touch) {
         // Beyond any picture, within the driver's limit on one move (MOUSE_ClampRelativeMovement).
+        // The host point moves to (1, 1) first: in seamless mode the driver holds back motion whose
+        // host point did not change, and the driver's last point may already be (0, 0) (the first
+        // touch of a run), which would fold this move into the next one.
+        warp_motion(0.0f, 0.0f, 1, 1);
         warp_motion(-2048.0f, -2048.0f, 0, 0);
         warp_known = false;
         warp = Warp::Homing;
