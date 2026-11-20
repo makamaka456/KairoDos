@@ -1215,8 +1215,27 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
     // MainActivity는 화면 회전을 스스로 처리하므로(configChanges) 돌아가도 게임이 다시 시작되지 않는다.
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        installPm2Defaults()
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    // 개조(PM2): 새로 설치했을 때의 기본 설정 -----------------------------------------------------------
+    // assets/pm2-defaults 는 사용자가 휴대폰에서 맞춘 설정(조작·가상 버튼 배치·키 매핑·화면, 게임 설정)이다.
+    // 설정 파일이 아직 없을 때(새로 설치) 한 번만, 앱이 설정을 읽기 전에 넣는다. 게임 폴더(rom_tree)와 그
+    // 권한은 옮길 수 없어 빠져 있으므로, 첫 실행에서 폴더 선택 화면이 나온다. 업데이트 설치에는 손대지 않는다.
+    private fun installPm2Defaults() {
+        fun install(asset: String, target: File) {
+            if (target.exists()) return
+            target.parentFile?.mkdirs()
+            assets.open("pm2-defaults/$asset").use { input -> target.outputStream().use { input.copyTo(it) } }
+        }
+        try {
+            install("kairodos.xml", File(dataDir, "shared_prefs/kairodos.xml"))
+            install("overrides-v1.json", File(filesDir, "overrides-v1.json"))
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("PM2", "Could not install the default settings", e)
+        }
     }
 
     override fun setRequestedOrientation(requestedOrientation: Int) {

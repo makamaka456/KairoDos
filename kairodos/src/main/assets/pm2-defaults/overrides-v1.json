@@ -1,0 +1,1 @@
+{"schemaVersion":1,"games":{"PrincessMaker 2.zip":{"input":{"touch":"direct","secondary":"touchpad"},"launch":{"custom":true,"autoexec":"PM2.EXE","settings":{"dosbox.memsize":"64"}}}}}
