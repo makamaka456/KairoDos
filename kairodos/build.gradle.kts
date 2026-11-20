@@ -16,7 +16,7 @@ apply(from = rootProject.file("shared/gradle/kairo-app.gradle"))
 android.defaultConfig.applicationId = "com.pm2mod.kairodos"
 android.buildTypes.getByName("debug").apply {
     isDebuggable = false
-    externalNativeBuild.cmake.arguments += "-DCMAKE_BUILD_TYPE=Release"
+    externalNativeBuild.cmake.arguments("-DCMAKE_BUILD_TYPE=Release")
 }
 
 // DOSBox Staging's runtime resources, beside the shared catalog assets.
