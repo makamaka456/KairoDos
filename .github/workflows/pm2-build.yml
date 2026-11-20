@@ -18,6 +18,10 @@ jobs:
       - name: Check out the pinned Kairo frontend
         run: git submodule update --init --recursive shared
       - uses: ./shared/.github/actions/setup-android
+      # 에뮬레이터 부품(SDL 등)을 저장소 안 소스로 먼저 짓는다(README "Building from source", tools/checks.sh).
+      - name: Prepare the DOSBox Staging dependencies
+        shell: pwsh
+        run: ./tools/PrepareStagingDependencies.ps1
       - name: Build the APK
         shell: bash
         run: |

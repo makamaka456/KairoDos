@@ -11,13 +11,10 @@ extra["kairoCatalogRules"] = "com.mrjackspade.kairodos.DosCatalog"
 extra["kairoChd"] = true
 apply(from = rootProject.file("shared/gradle/kairo-app.gradle"))
 
-// 개조(PM2): 원래 KairoDos 옆에 따로 설치되는 앱 ID. 디버그 키로 서명한 빌드도 에뮬레이터가 빠르게
-// 돌도록 네이티브 코드는 Release로 짓고, 디버깅은 끈다(shared/gradle/kairo-uitest.gradle 과 같은 이유).
+// 개조(PM2): 원래 KairoDos 옆에 따로 설치되는 앱 ID. 에뮬레이터 엔진은 디버그 빌드에서도 -O2로
+// 지어진다(backend-dos/CMakeLists.txt:47-48). 앱 코드가 느려지지 않게 디버깅만 끈다(kairo-uitest.gradle 참고).
 android.defaultConfig.applicationId = "com.pm2mod.kairodos"
-android.buildTypes.getByName("debug").apply {
-    isDebuggable = false
-    externalNativeBuild.cmake.arguments("-DCMAKE_BUILD_TYPE=Release")
-}
+android.buildTypes.getByName("debug").isDebuggable = false
 
 // DOSBox Staging's runtime resources, beside the shared catalog assets.
 android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/staging-assets"))
