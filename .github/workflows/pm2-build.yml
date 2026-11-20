@@ -19,7 +19,18 @@ jobs:
         run: git submodule update --init --recursive shared
       - uses: ./shared/.github/actions/setup-android
       - name: Build the APK
-        run: ./gradlew --no-daemon :kairodos:assembleWithoutImagesDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! ./gradlew --no-daemon :kairodos:assembleWithoutImagesDebug 2>&1 | tee build.log; then
+            {
+              echo '## Build errors'
+              echo '```'
+              grep -n -E '^e: |error:|What went wrong|FAILURE|Exception|> ' build.log | head -n 80
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: pm2-kairodos-apk
