@@ -73,6 +73,11 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
         private const val NEW_GAME = "staging/new-game.txt"
         /** The Version choice that runs the preset with the player's own DOSBox settings and startup commands. */
         private const val CUSTOM_VERSION = "custom"
+        /** 개조(PM2): 앱을 열면 시작할 게임의 키(GameKey.path)와 직접 터치 시간. */
+        private const val AUTO_START_KEY = "pm2_auto_start_game"
+        private const val DIRECT_SETTLE_MS = 100L
+        private const val DIRECT_PRESS_MS = 120L
+        private const val DIRECT_LONG_PRESS_MS = 500L
         private const val SOUND_FONT_IMPORT_REQUEST = FIRST_PRODUCT_REQUEST
         /** The lock keys' codes (DosKeys), in the order dos_core.cpp reports them. */
         private val LOCK_KEYS = listOf(301, 300, 302)
@@ -172,6 +177,7 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
         super.libraryLoaded(entries)
         DosSettingsMigration.run(preferences, catalog)
         recoverNewGames()
+        autoStart(entries)
     }
 
     /**
@@ -1090,7 +1096,7 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
 
     override fun handleMouseTouch(event: MotionEvent, width: Int, height: Int) {
         if (touchSelection().directTouch) {
-            super.handleMouseTouch(event, width, height)
+            directTouch(event, width, height)
             return
         }
         when (event.actionMasked) {
@@ -1119,5 +1125,98 @@ class MainActivity : MachineActivity<DosLibrary.Game>() {
             MotionEvent.ACTION_CANCEL -> mouseRouter.releasePrefix("touch-")
         }
     }
+
+    // 개조(PM2): 직접 터치 ----------------------------------------------------------------------
+    // 손가락이 닿은 곳으로 커서를 옮기고, 게임이 마우스를 읽을 시간(DIRECT_SETTLE_MS)을 준 뒤 누른다.
+    // 탭 = 왼쪽 클릭, 0.5초 꾹 누르기 = 오른쪽 클릭. 손가락을 끌면 커서만 따라온다(클릭 없음).
+    // 게임 쪽은 PM2.EXE 패치 002(마우스 절대 위치)와 함께 써야 손가락 위치와 커서가 정확히 맞는다.
+
+    private var directStartX = 0f
+    private var directStartY = 0f
+    private var directMoved = false
+    private var directLongFired = false
+    private var directLongPress: Runnable? = null
+
+    private fun directWarp(event: MotionEvent, width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        val (frameWidth, frameHeight) = videoSize()
+        if (frameWidth <= 0 || frameHeight <= 0) return
+        warpMouse((event.x * frameWidth / width).toInt().coerceIn(0, frameWidth - 1),
+            (event.y * frameHeight / height).toInt().coerceIn(0, frameHeight - 1))
+    }
+
+    private fun directClick(button: String) {
+        handler.postDelayed({
+            mouseRouter.hold("touch-direct", button)
+            handler.postDelayed({ mouseRouter.release("touch-direct") }, DIRECT_PRESS_MS)
+        }, DIRECT_SETTLE_MS)
+    }
+
+    private fun cancelDirectLongPress() {
+        directLongPress?.let(handler::removeCallbacks)
+        directLongPress = null
+    }
+
+    private fun directTouch(event: MotionEvent, width: Int, height: Int) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                cancelDirectLongPress()
+                mouseRouter.releasePrefix("touch-")
+                directStartX = event.x; directStartY = event.y
+                directMoved = false; directLongFired = false
+                directWarp(event, width, height)
+                val long = Runnable {
+                    directLongPress = null
+                    if (!directMoved) {
+                        directLongFired = true
+                        directClick("rightButton")
+                    }
+                }
+                directLongPress = long
+                handler.postDelayed(long, DIRECT_LONG_PRESS_MS)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!directMoved && (abs(event.x - directStartX) > dp(12) || abs(event.y - directStartY) > dp(12))) {
+                    directMoved = true
+                    cancelDirectLongPress()
+                }
+                if (directMoved) directWarp(event, width, height)
+            }
+            MotionEvent.ACTION_UP -> {
+                cancelDirectLongPress()
+                if (!directMoved && !directLongFired) directClick("leftButton")
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                cancelDirectLongPress()
+                mouseRouter.releasePrefix("touch-")
+            }
+        }
+    }
+
+    // 개조(PM2): 앱을 열면 정해 둔 게임을 바로 시작 -------------------------------------------------
+
+    private var autoStartDone = false
+
+    private fun autoStart(entries: List<DosLibrary.Game>) {
+        if (autoStartDone) return
+        val key = preferences.getString(AUTO_START_KEY, null)
+        if (key == null || currentEntry != null || com.mrjackspade.kairo.frontend.ExternalGameIntent.hasRequest(intent)) {
+            autoStartDone = true
+            return
+        }
+        val entry = entries.firstOrNull { it.key.path == key && it.contentId != null } ?: return
+        autoStartDone = true
+        handler.post { if (currentEntry == null) launch(entry, false) }
+    }
+
+    override fun machineExtraGroups(entry: DosLibrary.Game, enabled: () -> Boolean): List<RowGroup> =
+        listOf(RowGroup(getString(R.string.auto_start_group), listOf(
+            SettingsRow.switch("auto-start", getString(R.string.auto_start_label),
+                { preferences.getString(AUTO_START_KEY, null) == entry.key.path },
+                enabled = enabled, disabledReason = { GameSettingsRows.noHash(this) }) { on ->
+                preferences.edit().apply {
+                    if (on) putString(AUTO_START_KEY, entry.key.path) else remove(AUTO_START_KEY)
+                }.apply()
+            }), getString(R.string.auto_start_foot)))
 
 }

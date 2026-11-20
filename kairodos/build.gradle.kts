@@ -4,11 +4,20 @@ plugins {
 }
 
 extra["kairoProduct"] = "kairodos"
-extra["kairoLabel"] = "KairoDos"
-extra["kairoLauncherBackground"] = "#00110A"
+// 개조(PM2): 앱 이름과 아이콘 바탕색
+extra["kairoLabel"] = "프린세스메이커2"
+extra["kairoLauncherBackground"] = "#FF99AE"
 extra["kairoCatalogRules"] = "com.mrjackspade.kairodos.DosCatalog"
 extra["kairoChd"] = true
 apply(from = rootProject.file("shared/gradle/kairo-app.gradle"))
+
+// 개조(PM2): 원래 KairoDos 옆에 따로 설치되는 앱 ID. 디버그 키로 서명한 빌드도 에뮬레이터가 빠르게
+// 돌도록 네이티브 코드는 Release로 짓고, 디버깅은 끈다(shared/gradle/kairo-uitest.gradle 과 같은 이유).
+android.defaultConfig.applicationId = "com.pm2mod.kairodos"
+android.buildTypes.getByName("debug").apply {
+    isDebuggable = false
+    externalNativeBuild.cmake.arguments += "-DCMAKE_BUILD_TYPE=Release"
+}
 
 // DOSBox Staging's runtime resources, beside the shared catalog assets.
 android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/staging-assets"))

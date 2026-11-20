@@ -182,4 +182,8 @@
     <string name="blank_game_not_saved">Could not save %1$s to the games folder</string>
     <string name="blank_game_saved">Saved %1$s to the games folder</string>
     <string name="blank_game_saving">Saving %1$s to the games folder…</string>
+    <!-- PM2 mod: start a chosen game when the app opens -->
+    <string name="auto_start_group">App start</string>
+    <string name="auto_start_label">Start this game when the app opens</string>
+    <string name="auto_start_foot">Only one game can start automatically. Turn this off to see the library when the app opens.</string>
 </resources>

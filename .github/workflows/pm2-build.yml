@@ -1,0 +1,28 @@
+name: PM2 mod APK
+
+# 개조(PM2) 빌드: 디버그 키로 서명한 APK를 만들어 Actions 결과물(artifact)로 남긴다.
+# Actions 탭 → "PM2 mod APK" → "Run workflow" 로 실행. 끝나면 실행 화면 아래 Artifacts 에서 받는다.
+on:
+  workflow_dispatch:
+  push:
+    branches: [pm2-mod]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the pinned Kairo frontend
+        run: git submodule update --init --recursive shared
+      - uses: ./shared/.github/actions/setup-android
+      - name: Build the APK
+        run: ./gradlew --no-daemon :kairodos:assembleWithoutImagesDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pm2-kairodos-apk
+          path: kairodos/build/outputs/apk/withoutImages/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
