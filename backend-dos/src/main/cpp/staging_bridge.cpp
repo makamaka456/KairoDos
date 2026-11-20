@@ -411,21 +411,15 @@ extern "C" void kairo_staging_mouse_move(int dx, int dy) {
     MOUSE_EventMoved(float(dx), float(dy), viewport.x + cursor_x, viewport.y + cursor_y);
 }
 
-// PM2 mod: the point is a fraction of the picture the player sees, and Staging's mouse driver
-// measures its absolute position against the picture's draw rectangle (mouse.cpp
-// update_cursor_absolute_position, MOUSE_NewScreenParams). The viewport is the whole canvas, which
-// is wider than the picture when the picture is pillarboxed, so the point goes to the draw rectangle.
-DosBox::Rect GFX_CalcDrawRectInPixels(const DosBox::Rect& canvas_size_px);
-
 extern "C" void kairo_staging_mouse_point(int x, int y) {
     set_mouse_absolute(true);
-    const auto draw = GFX_CalcDrawRectInPixels(GFX_GetCanvasSizeInPixels());
-    const auto width = draw.w - 1;
-    const auto height = draw.h - 1;
+    const auto viewport = GFX_GetViewportSizeInPixels();
+    const auto width = viewport.w - 1;
+    const auto height = viewport.h - 1;
     if (width <= 0 || height <= 0) return;
     const auto next_x = std::clamp(float(x) * width / 65536.0f, 0.0f, float(width));
     const auto next_y = std::clamp(float(y) * height / 65536.0f, 0.0f, float(height));
-    MOUSE_EventMoved(next_x - cursor_x, next_y - cursor_y, draw.x + next_x, draw.y + next_y);
+    MOUSE_EventMoved(next_x - cursor_x, next_y - cursor_y, viewport.x + next_x, viewport.y + next_y);
     cursor_x = next_x; cursor_y = next_y;
 }
 
