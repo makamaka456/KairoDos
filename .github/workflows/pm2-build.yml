@@ -17,6 +17,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check out the pinned Kairo frontend
         run: git submodule update --init --recursive shared
+      # 개조(PM2): 원작자 저장소인 shared 를 직접 고칠 수 없어, 고칠 내용은 pm2-patches 에 패치로 두고 빌드 때 적용한다.
+      - name: Apply the PM2 mod's patches to the Kairo frontend
+        shell: bash
+        run: for p in pm2-patches/shared-*.patch; do git -C shared apply --verbose "../$p"; done
       - uses: ./shared/.github/actions/setup-android
       # 에뮬레이터 부품(SDL 등)을 저장소 안 소스로 먼저 짓는다(README "Building from source", tools/checks.sh).
       - name: Prepare the DOSBox Staging dependencies

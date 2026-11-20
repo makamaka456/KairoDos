@@ -1,0 +1,16 @@
+diff --git a/frontend/src/main/java/com/mrjackspade/kairo/frontend/KairoActivity.kt b/frontend/src/main/java/com/mrjackspade/kairo/frontend/KairoActivity.kt
+index 9dc7056..757bec0 100644
+--- a/frontend/src/main/java/com/mrjackspade/kairo/frontend/KairoActivity.kt
++++ b/frontend/src/main/java/com/mrjackspade/kairo/frontend/KairoActivity.kt
+@@ -1684,7 +1684,10 @@ abstract class KairoActivity<E : LibraryItem> : Activity(), SurfaceHolder.Callba
+             { keyboardPanel.visibility != View.VISIBLE &&
+                 (!::secondaryKeyboard.isInitialized || !secondaryKeyboard.isKeyboardVisible) },
+             { onScreenControls.hitTest(event.x, event.y) },
+-            { super.dispatchTouchEvent(it) }, ::dispatchGuestTouch, { openMenu() }, ::showKeyboard, ::closeMenu)
++            // PM2 mod: the right edge opens the menu too. On a phone with three-button navigation the
++            // swipe that brings back the hidden navigation bar starts at the right edge in landscape,
++            // and opened the touch keyboard, which the game never needs.
++            { super.dispatchTouchEvent(it) }, ::dispatchGuestTouch, { openMenu() }, { openMenu() }, ::closeMenu)
+     }
+ 
+     @Deprecated("Legacy Back path; API 33+ also uses OnBackInvokedDispatcher")

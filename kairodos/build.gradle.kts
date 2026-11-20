@@ -16,7 +16,8 @@ apply(from = rootProject.file("shared/gradle/kairo-app.gradle"))
 // 처음 설치한 com.pm2mod.kairodos 는 빌드마다 바뀌는 임시 키로 서명되어 덮어 설치가 안 된다.
 // 그래서 이 ID부터는 Actions가 만든 APK를 사용자 PC의 고정 키로 다시 서명해 설치한다(키는 저장소 밖).
 android.defaultConfig.applicationId = "com.pm2mod.pm2"
-android.buildTypes.getByName("debug").isDebuggable = false
+// 임시(설정 꺼내기용): 디버깅을 켜 adb run-as 로 앱 설정 파일을 읽는다. 꺼낸 뒤 false 로 되돌린다.
+android.buildTypes.getByName("debug").isDebuggable = true
 
 // DOSBox Staging's runtime resources, beside the shared catalog assets.
 android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/staging-assets"))
