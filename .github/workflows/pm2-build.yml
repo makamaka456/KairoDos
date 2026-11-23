@@ -58,3 +58,26 @@ jobs:
             --target "$GITHUB_SHA" --title "PM2 mod latest build" --notes "pm2-mod 가지의 최신 빌드(Actions가 자동으로 바꾼다)."
           gh release upload pm2-latest pm2-latest.apk --clobber
           gh release edit pm2-latest --notes "pm2-mod 가지의 최신 빌드: ${GITHUB_SHA::7} (Actions가 자동으로 바꾼다)."
+      # 개조(PM2): kairodos/build.gradle.kts 의 versionName 마다 정식 릴리즈 "pm2-v<버전>"을 한 번 만든다.
+      # 이미 그 버전의 APK가 올라가 있으면 건드리지 않으니, 새 릴리즈를 내려면 versionName(과 versionCode)을 올린다.
+      - name: Publish the APK to the pm2-v<version> release
+        if: github.ref == 'refs/heads/pm2-mod'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^android\.defaultConfig\.versionName = "\(.*\)"$/\1/p' kairodos/build.gradle.kts)
+          if [ -z "$version" ]; then echo "versionName not found"; exit 1; fi
+          tag="pm2-v$version"
+          asset="PM2Launcher-$version.apk"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$GITHUB_SHA" --latest \
+              --title "프린세스 메이커 2 런처 v$version" \
+              --notes "프린세스 메이커 2 전용 런처(KairoDos 개조판) v$version. 아래 $asset 을 받아 설치한다(게임 파일은 들어 있지 않다)."
+          fi
+          if gh release view "$tag" --json assets --jq '.assets[].name' | grep -qx "$asset"; then
+            echo "$tag already has $asset"
+          else
+            cp pm2-latest.apk "$asset"
+            gh release upload "$tag" "$asset"
+          fi
