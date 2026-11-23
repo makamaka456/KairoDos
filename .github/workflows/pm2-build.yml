@@ -21,7 +21,8 @@ jobs:
       - name: Apply the PM2 mod's patches to the Kairo frontend
         shell: bash
         run: for p in pm2-patches/shared-*.patch; do git -C shared apply --verbose "../$p"; done
-      - uses: ./shared/.github/actions/setup-android
+      - id: android
+        uses: ./shared/.github/actions/setup-android
       # 에뮬레이터 부품(SDL 등)을 저장소 안 소스로 먼저 짓는다(README "Building from source", tools/checks.sh).
       - name: Prepare the DOSBox Staging dependencies
         shell: pwsh
@@ -39,6 +40,28 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+      # 개조(PM2): 빌드마다 바뀌는 디버그 키 대신, 저장소 Secret 의 고정 키로 다시 서명한다.
+      # 그래서 어느 빌드의 APK든 이전 버전 위에 덮어 설치된다. Secret 이 없으면 빌드를 실패시킨다.
+      - name: Sign the APK with the fixed PM2 key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PM2_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PM2_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PM2_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "PM2_KEYSTORE_BASE64 / PM2_KEYSTORE_PASSWORD / PM2_KEY_ALIAS secrets are missing"; exit 1
+          fi
+          ks="$RUNNER_TEMP/pm2-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$ks"
+          apksigner="$ANDROID_HOME/build-tools/${{ steps.android.outputs.build-tools }}/apksigner"
+          for apk in kairodos/build/outputs/apk/withoutImages/debug/*.apk; do
+            "$apksigner" sign --ks "$ks" --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD "$apk"
+            "$apksigner" verify --print-certs "$apk" | grep -i 'SHA-256'
+          done
+          rm -f "$ks"
       - uses: actions/upload-artifact@v4
         with:
           name: pm2-kairodos-apk
@@ -46,7 +69,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       # 로그인 없이 받을 수 있게 공개 릴리즈 "pm2-latest"에도 올린다(게임 파일은 들어 있지 않다).
-      # 이 APK는 빌드마다 서명 키가 달라, 덮어 설치하려면 사용자 PC의 고정 키로 다시 서명한다.
+      # 위 단계에서 고정 키로 서명했으므로 받은 그대로 덮어 설치할 수 있다.
       - name: Publish the APK to the pm2-latest release
         shell: bash
         env:
