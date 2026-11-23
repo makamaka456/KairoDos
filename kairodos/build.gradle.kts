@@ -16,6 +16,10 @@ apply(from = rootProject.file("shared/gradle/kairo-app.gradle"))
 // 처음 설치한 com.pm2mod.kairodos 는 빌드마다 바뀌는 임시 키로 서명되어 덮어 설치가 안 된다.
 // 그래서 이 ID부터는 Actions가 만든 APK를 사용자 PC의 고정 키로 다시 서명해 설치한다(키는 저장소 밖).
 android.defaultConfig.applicationId = "com.pm2mod.pm2"
+// 개조판 자체 버전(릴리즈 태그 pm2-v<버전>). 원래 KairoDos의 업데이트 확인은 원작자 릴리즈를 보므로 끈다.
+android.defaultConfig.versionCode = 2
+android.defaultConfig.versionName = "1.0.0"
+android.defaultConfig.resValue("bool", "kairo_update_check", "false")
 android.buildTypes.getByName("debug").isDebuggable = false
 
 // DOSBox Staging's runtime resources, beside the shared catalog assets.
